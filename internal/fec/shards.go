@@ -1,11 +1,13 @@
-
 package fec
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/klauspost/reedsolomon"
 )
 
 const (
@@ -171,25 +173,22 @@ func (c *ShardCollector) AddShard(data []byte) ([]byte, error) {
 	// 如果有足够的分片，尝试重建
 	if group.Received >= dataShards {
 		var reconstructed []byte
-		var err error
+		var recErr error
 
 		if c.useAdaptive && c.adaptiveFEC != nil {
-			reconstructed, err = c.adaptiveFEC.Decode(group.Shards, group.DataLen, group.Parity)
+			reconstructed, recErr = c.adaptiveFEC.Decode(group.Shards, group.DataLen, group.Parity)
 		} else if c.staticFEC != nil {
-			reconstructed, err = c.staticFEC.Decode(group.Shards, group.DataLen)
+			reconstructed, recErr = c.staticFEC.Decode(group.Shards, group.DataLen)
 		} else {
 			// 创建临时 FEC 解码器
-			fec, err := New(dataShards, group.Parity)
-			if err != nil {
-				return nil, fmt.Errorf("创建解码器: %w", err)
+			fec, fecErr := New(dataShards, group.Parity)
+			if fecErr != nil {
+				return nil, fmt.Errorf("创建解码器: %w", fecErr)
 			}
-			reconstructed, err = fec.Decode(group.Shards, group.DataLen)
-			if err != nil {
-				return nil, err
-			}
+			reconstructed, recErr = fec.Decode(group.Shards, group.DataLen)
 		}
 
-		if err == nil {
+		if recErr == nil {
 			group.Completed = true
 			c.completedGroups++
 			return reconstructed, nil
@@ -220,7 +219,7 @@ func (c *ShardCollector) Cleanup() int {
 	return count
 }
 
-// Stats 返回收集器统计信息
+// CollectorStats 返回收集器统计信息
 type CollectorStats struct {
 	PendingGroups   int
 	CompletedGroups uint64
@@ -363,3 +362,5 @@ func (e *FECEncoder) IsAdaptive() bool {
 	return e.useAdaptive
 }
 
+// 确保使用了 reedsolomon 包（避免未使用导入错误）
+var _ reedsolomon.Encoder = nil
