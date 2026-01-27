@@ -10,8 +10,9 @@ set -e
 # 配置变量
 # ═══════════════════════════════════════════════════════════════════════════════
 
-VERSION="1.1.0"
-GITHUB_REPO="anthropics/phantom-server"
+
+VERSION="1.1"
+GITHUB_REPO="mrcgq/p1p1"
 INSTALL_DIR="/opt/phantom"
 CONFIG_DIR="/etc/phantom"
 LOG_DIR="/var/log/phantom"
