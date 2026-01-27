@@ -214,8 +214,8 @@ download_binary() {
         
         # 尝试从 latest 下载
         log_info "尝试下载最新版本..."
-        download_url="https://github.com/${GITHUB_REPO}/releases/latest/download/${BINARY_NAME}-linux-${ARCH}.tar.gz"
-        
+        download_url="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/phantom-server-linux-${ARCH}"
+
         if ! curl -fSL --progress-bar -o "$temp_file" "$download_url"; then
             log_error "下载失败，请检查网络连接"
             exit 1
