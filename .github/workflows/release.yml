@@ -1,0 +1,358 @@
+#═══════════════════════════════════════════════════════════════════
+# Phantom Server v1.1 - 发布工作流
+#═══════════════════════════════════════════════════════════════════
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '发布版本 (例如: v1.1.0)'
+        required: true
+        type: string
+
+env:
+  GO_VERSION: '1.21'
+  BINARY_NAME: phantom-server
+
+permissions:
+  contents: write
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════
+  # 准备发布
+  # ═══════════════════════════════════════════════════════════════
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 确定版本
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "📦 准备发布版本: ${VERSION} (标签: ${TAG})"
+
+  # ═══════════════════════════════════════════════════════════════
+  # 多平台构建
+  # ═══════════════════════════════════════════════════════════════
+  build:
+    name: Build (${{ matrix.os }}/${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            ext: ""
+          - os: linux
+            arch: arm64
+            ext: ""
+          - os: linux
+            arch: arm
+            goarm: "7"
+            ext: ""
+          - os: darwin
+            arch: amd64
+            ext: ""
+          - os: darwin
+            arch: arm64
+            ext: ""
+          - os: windows
+            arch: amd64
+            ext: ".exe"
+          - os: freebsd
+            arch: amd64
+            ext: ""
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 设置 Go 环境
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 构建二进制文件
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          GOARM: ${{ matrix.goarm }}
+          CGO_ENABLED: 0
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
+          
+          # 构建文件名
+          if [[ "${{ matrix.arch }}" == "arm" ]]; then
+            ARCH_SUFFIX="armv${{ matrix.goarm }}"
+          else
+            ARCH_SUFFIX="${{ matrix.arch }}"
+          fi
+          BINARY_OUTPUT="${{ env.BINARY_NAME }}-${{ matrix.os }}-${ARCH_SUFFIX}${{ matrix.ext }}"
+          
+          # 构建
+          go build -trimpath \
+            -ldflags "-s -w \
+              -X 'main.Version=${VERSION}' \
+              -X 'main.BuildTime=${BUILD_TIME}' \
+              -X 'main.GitCommit=${COMMIT}'" \
+            -o "${BINARY_OUTPUT}" \
+            ./cmd/phantom-server
+          
+          echo "BINARY_OUTPUT=${BINARY_OUTPUT}" >> $GITHUB_ENV
+          echo "✅ 构建完成: ${BINARY_OUTPUT}"
+
+      - name: 创建发布包
+        run: |
+          ARCHIVE_NAME="${BINARY_OUTPUT%.exe}"
+          
+          # 创建临时目录
+          mkdir -p release-package
+          cp "${BINARY_OUTPUT}" release-package/
+          cp configs/config.example.yaml release-package/config.yaml
+          cp README.md release-package/
+          cp LICENSE release-package/ 2>/dev/null || echo "# MIT License" > release-package/LICENSE
+          
+          # 创建安装说明
+          cat > release-package/INSTALL.txt << 'EOF'
+          ╔═══════════════════════════════════════════════════════════════╗
+          ║              Phantom Server v${{ needs.prepare.outputs.version }} 安装指南              ║
+          ╚═══════════════════════════════════════════════════════════════╝
+
+          1. 移动二进制文件到系统目录:
+             sudo mv phantom-server* /usr/local/bin/phantom-server
+             sudo chmod +x /usr/local/bin/phantom-server
+
+          2. 创建配置目录:
+             sudo mkdir -p /etc/phantom
+             sudo mv config.yaml /etc/phantom/
+
+          3. 运行初始化向导:
+             phantom-server setup --domain your.domain.com \
+                 --cf-token "your-cloudflare-token" \
+                 --cf-zone-id "your-zone-id"
+
+          4. 启动服务:
+             phantom-server run -c /etc/phantom/config.yaml
+
+          更多信息请访问: https://github.com/anthropics/phantom-server
+          EOF
+          
+          # 打包
+          if [[ "${{ matrix.os }}" == "windows" ]]; then
+            zip -j "${ARCHIVE_NAME}.zip" release-package/*
+            echo "ARCHIVE=${ARCHIVE_NAME}.zip" >> $GITHUB_ENV
+          else
+            tar -czvf "${ARCHIVE_NAME}.tar.gz" -C release-package .
+            echo "ARCHIVE=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: 生成校验和
+        run: |
+          sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          echo "SHA256: $(cat ${ARCHIVE}.sha256)"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          retention-days: 1
+
+  # ═══════════════════════════════════════════════════════════════
+  # 创建 GitHub Release
+  # ═══════════════════════════════════════════════════════════════
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [prepare, build]
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: release-*
+
+      - name: 整理发布文件
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec mv {} release-files/ \;
+          ls -la release-files/
+          
+          # 生成汇总校验和文件
+          cd release-files
+          cat *.sha256 > checksums.txt
+          echo "=== 所有校验和 ==="
+          cat checksums.txt
+
+      - name: 生成更新日志
+        id: changelog
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          TAG="${{ needs.prepare.outputs.tag }}"
+          
+          cat > release-notes.md << EOF
+          # 🚀 Phantom Server ${TAG}
+          
+          ## ✨ 新特性
+          
+          - 🎯 **Adaptive FEC** - 智能动态冗余，根据网络状况自动调整
+          - 🔌 **SOCKS5 UDP ASSOCIATE** - 完整的 UDP 代理支持
+          - 🔀 **多路复用** - 单连接承载多流，减少连接开销
+          - 📊 **增强指标** - 实时丢包率、RTT、FEC 状态监控
+          
+          ## 📦 下载
+          
+          | 平台 | 架构 | 下载链接 |
+          |------|------|----------|
+          | Linux | amd64 | [phantom-server-linux-amd64.tar.gz](https://github.com/anthropics/phantom-server/releases/download/${TAG}/phantom-server-linux-amd64.tar.gz) |
+          | Linux | arm64 | [phantom-server-linux-arm64.tar.gz](https://github.com/anthropics/phantom-server/releases/download/${TAG}/phantom-server-linux-arm64.tar.gz) |
+          | Linux | armv7 | [phantom-server-linux-armv7.tar.gz](https://github.com/anthropics/phantom-server/releases/download/${TAG}/phantom-server-linux-armv7.tar.gz) |
+          | macOS | amd64 | [phantom-server-darwin-amd64.tar.gz](https://github.com/anthropics/phantom-server/releases/download/${TAG}/phantom-server-darwin-amd64.tar.gz) |
+          | macOS | arm64 | [phantom-server-darwin-arm64.tar.gz](https://github.com/anthropics/phantom-server/releases/download/${TAG}/phantom-server-darwin-arm64.tar.gz) |
+          | Windows | amd64 | [phantom-server-windows-amd64.zip](https://github.com/anthropics/phantom-server/releases/download/${TAG}/phantom-server-windows-amd64.zip) |
+          | FreeBSD | amd64 | [phantom-server-freebsd-amd64.tar.gz](https://github.com/anthropics/phantom-server/releases/download/${TAG}/phantom-server-freebsd-amd64.tar.gz) |
+          
+          ## 🔧 快速安装
+          
+          \`\`\`bash
+          # Linux/macOS 一键安装
+          bash <(curl -fsSL https://raw.githubusercontent.com/anthropics/phantom-server/main/scripts/install.sh)
+          
+          # 或手动下载
+          wget https://github.com/anthropics/phantom-server/releases/download/${TAG}/phantom-server-linux-amd64.tar.gz
+          tar -xzf phantom-server-linux-amd64.tar.gz
+          sudo mv phantom-server /usr/local/bin/
+          \`\`\`
+          
+          ## 📋 校验和
+          
+          <details>
+          <summary>SHA256 校验和</summary>
+          
+          \`\`\`
+          $(cat release-files/checksums.txt)
+          \`\`\`
+          
+          </details>
+          
+          ## 📖 完整文档
+          
+          查看 [README.md](https://github.com/anthropics/phantom-server#readme) 获取完整使用说明。
+          
+          ---
+          
+          **Full Changelog**: https://github.com/anthropics/phantom-server/compare/$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "v1.0.0")...${TAG}
+          EOF
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Phantom Server ${{ needs.prepare.outputs.tag }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(needs.prepare.outputs.tag, 'alpha') || contains(needs.prepare.outputs.tag, 'beta') || contains(needs.prepare.outputs.tag, 'rc') }}
+          files: |
+            release-files/*.tar.gz
+            release-files/*.zip
+            release-files/*.sha256
+            release-files/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ═══════════════════════════════════════════════════════════════
+  # 更新安装脚本
+  # ═══════════════════════════════════════════════════════════════
+  update-install-script:
+    name: Update Install Script
+    runs-on: ubuntu-latest
+    needs: [prepare, release]
+    if: ${{ !contains(needs.prepare.outputs.tag, 'alpha') && !contains(needs.prepare.outputs.tag, 'beta') }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 更新安装脚本版本
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          
+          # 更新 install.sh 中的版本号
+          if [ -f scripts/install.sh ]; then
+            sed -i "s/^VERSION=.*/VERSION=\"${VERSION}\"/" scripts/install.sh
+            echo "✅ 更新 install.sh 版本到 ${VERSION}"
+          fi
+
+      - name: 提交更改
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update install script to ${{ needs.prepare.outputs.tag }}"
+          file_pattern: scripts/install.sh
+          branch: main
+
+  # ═══════════════════════════════════════════════════════════════
+  # 通知（可选）
+  # ═══════════════════════════════════════════════════════════════
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [prepare, release]
+    if: always()
+    steps:
+      - name: 发布状态
+        run: |
+          if [[ "${{ needs.release.result }}" == "success" ]]; then
+            echo "✅ Phantom Server ${{ needs.prepare.outputs.tag }} 发布成功!"
+            echo "📦 Release URL: https://github.com/anthropics/phantom-server/releases/tag/${{ needs.prepare.outputs.tag }}"
+          else
+            echo "❌ 发布失败，请检查日志"
+            exit 1
+          fi
+
+      # 可选：发送到 Telegram/Discord/Slack
+      # - name: 发送 Telegram 通知
+      #   if: ${{ needs.release.result == 'success' && secrets.TELEGRAM_BOT_TOKEN }}
+      #   uses: appleboy/telegram-action@master
+      #   with:
+      #     to: ${{ secrets.TELEGRAM_CHAT_ID }}
+      #     token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      #     message: |
+      #       🚀 Phantom Server ${{ needs.prepare.outputs.tag }} 已发布!
+      #       
+      #       📦 下载: https://github.com/anthropics/phantom-server/releases/tag/${{ needs.prepare.outputs.tag }}
