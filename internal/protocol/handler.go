@@ -1,4 +1,3 @@
-
 package protocol
 
 import (
@@ -23,7 +22,7 @@ type Handler struct {
 	metrics    *metrics.Collector
 
 	// 多路复用配置
-	muxConfig MuxConfig
+	muxConfig  MuxConfig
 	muxEnabled bool
 
 	// 重放保护
@@ -88,7 +87,7 @@ func (h *Handler) HandlePacket(ctx context.Context, data []byte, from net.Addr) 
 
 	// 尝试使用有效时间窗口解密
 	var plaintext []byte
-	var validWindow int64
+	var decryptWindow int64
 	encryptedPart := data[HeaderSize:]
 
 	for _, window := range crypto.ValidWindows(h.timeWindow) {
@@ -99,9 +98,9 @@ func (h *Handler) HandlePacket(ctx context.Context, data []byte, from net.Addr) 
 
 		plaintext, err = aead.DecryptPacket(encryptedPart)
 		if err == nil {
-			validWindow = window
+			decryptWindow = window
 			// 检查重放攻击
-			if h.isReplay(window, data[:HeaderSize+crypto.NonceSize]) {
+			if h.isReplay(decryptWindow, data[:HeaderSize+crypto.NonceSize]) {
 				return nil, fmt.Errorf("检测到重放攻击")
 			}
 			break
@@ -478,5 +477,3 @@ func (h *Handler) CleanupReplayFilters() {
 func (h *Handler) Close() {
 	h.sessions.CloseAll()
 }
-
-
