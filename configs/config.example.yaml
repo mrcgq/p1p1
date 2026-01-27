@@ -1,0 +1,64 @@
+
+#═══════════════════════════════════════════════════════════════════
+# Phantom Server v1.1 配置文件
+# 战术级隐匿代理协议 - TSKD + Adaptive FEC + 多路复用
+#═══════════════════════════════════════════════════════════════════
+
+# 监听配置
+listen:
+  address: "0.0.0.0"
+  tcp_port: 443
+  udp_port: 54321
+
+# 认证配置
+auth:
+  # 预共享密钥 (Base64 编码, 32 字节)
+  psk: "YOUR_PSK_HERE"
+  # TSKD 时间窗口 (秒)
+  time_window: 30
+
+# TLS 配置
+tls:
+  enabled: true
+  cert_file: "/etc/phantom/ssl/cert.pem"
+  key_file: "/etc/phantom/ssl/key.pem"
+  server_name: "your.domain.com"
+
+# 前向纠错配置
+fec:
+  enabled: true
+  # 模式: static (固定冗余) | adaptive (自适应冗余)
+  mode: "adaptive"
+  # 数据分片数
+  data_shards: 10
+  # 冗余分片数 (static 模式使用)
+  fec_shards: 3
+  # 自适应模式参数
+  min_parity: 1        # 最小冗余分片
+  max_parity: 8        # 最大冗余分片
+  target_loss: 0.01    # 目标丢包率 (1%)
+  adjust_interval: 5s  # 调整间隔
+
+# 多路复用配置
+mux:
+  enabled: true
+  max_streams: 256
+  stream_buffer: 65536
+  keepalive_interval: 30s
+  idle_timeout: 5m
+
+# 代理配置
+proxy:
+  socks5:
+    enabled: true
+    udp_enabled: true    # 启用 UDP ASSOCIATE
+    udp_timeout: 60
+  http:
+    enabled: true
+
+# 日志配置
+log:
+  level: "info"
+  file: "/var/log/phantom/server.log"
+
+
