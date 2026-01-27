@@ -1,0 +1,30 @@
+# golangci-lint 配置
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+
+issues:
+  exclude-rules:
+    # 忽略测试文件中的某些检查
+    - path: _test\.go
+      linters:
+        - errcheck
+    # 忽略 main 包中的某些检查
+    - path: cmd/
+      linters:
+        - unused
