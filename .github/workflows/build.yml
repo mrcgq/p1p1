@@ -73,7 +73,9 @@ jobs:
           cache: true
 
       - name: 下载依赖
-        run: go mod download
+        run: |
+          go mod download
+          go mod tidy
 
       - name: 运行测试
         run: |
@@ -123,6 +125,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      - name: 下载依赖
+        run: |
+          go mod download
+          go mod tidy
 
       - name: 获取版本信息
         id: version
