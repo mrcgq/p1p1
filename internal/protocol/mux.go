@@ -1,9 +1,10 @@
-
 package protocol
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -324,7 +325,7 @@ func (m *Mux) CleanExpiredStreams(timeout time.Duration) int {
 	return count
 }
 
-// Stats 多路复用器统计
+// MuxStats 多路复用器统计
 type MuxStats struct {
 	SessionID   uint32
 	StreamCount int
@@ -343,10 +344,3 @@ func (m *Mux) Stats() MuxStats {
 		LastPong:    m.lastPong,
 	}
 }
-
-import (
-	"encoding/binary"
-	"fmt"
-)
-
-
