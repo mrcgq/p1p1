@@ -1,4 +1,3 @@
-
 package fec
 
 import (
@@ -22,10 +21,9 @@ type LossEstimator struct {
 	alpha float64 // 平滑因子 (0-1)
 
 	// 当前估计值
-	lossRate    float64
-	jitter      float64
-	rtt         time.Duration
-	bandwidth   float64 // 估计带宽 (bytes/s)
+	lossRate float64
+	jitter   float64
+	rtt      time.Duration
 
 	// 历史数据
 	samples     []LossSample
@@ -210,7 +208,7 @@ func (e *LossEstimator) GetRecentSamples(count int) []LossSample {
 	return samples
 }
 
-// Snapshot 估算器快照
+// EstimatorSnapshot 估算器快照
 type EstimatorSnapshot struct {
 	LossRate    float64
 	RTT         time.Duration
@@ -257,5 +255,3 @@ func (e *LossEstimator) EstimateBurstLoss(n int) float64 {
 	lossRate := e.GetLossRate()
 	return math.Pow(lossRate, float64(n))
 }
-
-
