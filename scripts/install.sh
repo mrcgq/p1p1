@@ -11,7 +11,8 @@ set -e
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-VERSION="1.1.1"
+
+PHANTOM_VERSION="1.1.1"
 GITHUB_REPO="mrcgq/p1p1"
 INSTALL_DIR="/opt/phantom"
 CONFIG_DIR="/etc/phantom"
@@ -203,7 +204,8 @@ get_public_ip() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 download_binary() {
-    local download_url="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${BINARY_NAME}-linux-${ARCH}.tar.gz"
+
+    local download_url="https://github.com/${GITHUB_REPO}/releases/download/v${PHANTOM_VERSION}/${BINARY_NAME}-linux-${ARCH}.tar.gz"
     local temp_file="/tmp/${BINARY_NAME}.tar.gz"
     
     log_step "下载 Phantom Server v${VERSION}..."
@@ -214,7 +216,8 @@ download_binary() {
         
         # 尝试从 latest 下载
         log_info "尝试下载最新版本..."
-        download_url="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/phantom-server-linux-${ARCH}"
+        
+        download_url="https://github.com/${GITHUB_REPO}/releases/download/v${PHANTOM_VERSION}/phantom-server-linux-${ARCH}"
 
         if ! curl -fSL --progress-bar -o "$temp_file" "$download_url"; then
             log_error "下载失败，请检查网络连接"
@@ -272,7 +275,7 @@ generate_config() {
     
     cat > "$CONFIG_DIR/config.yaml" << EOF
 #═══════════════════════════════════════════════════════════════════
-# Phantom Server v${VERSION} 配置文件
+# Phantom Server v${PHANTOM_VERSION} 配置文件
 # 生成时间: $(date '+%Y-%m-%d %H:%M:%S')
 #═══════════════════════════════════════════════════════════════════
 
@@ -716,7 +719,7 @@ quick_install() {
 print_result() {
     echo ""
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║              Phantom Server v${VERSION} 安装完成！                      ║${NC}"
+    echo -e "${GREEN}║              Phantom Server v${PHANTOM_VERSION} 安装完成！              ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${WHITE}┌─────────────────────────────────────────────────────────────────────────┐${NC}"
