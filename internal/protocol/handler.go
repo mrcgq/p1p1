@@ -1,4 +1,3 @@
-
 // internal/protocol/handler.go
 
 package protocol
@@ -154,9 +153,7 @@ func (h *UDPStreamHandler) HandleUDPStream(stream io.ReadWriteCloser, streamID u
 
 	h.sessions.Store(streamID, session)
 
-	h.log.Debug("UDP 代理会话已创建",
-		"streamID", streamID,
-		"target", targetAddr)
+	h.log.Debug("UDP 代理会话已创建: streamID=%d, target=%s", streamID, targetAddr)
 
 	// 启动双向转发
 	go h.forwardStreamToUDP(session)
@@ -182,9 +179,7 @@ func (h *UDPStreamHandler) forwardStreamToUDP(session *UDPProxySession) {
 		datagram := &UDPDatagram{}
 		if err := datagram.ReadFrom(session.Stream); err != nil {
 			if err != io.EOF {
-				h.log.Debug("读取 UDP 数据报失败",
-					"streamID", session.StreamID,
-					"error", err)
+				h.log.Debug("读取 UDP 数据报失败: streamID=%d, error=%v", session.StreamID, err)
 			}
 			return
 		}
@@ -198,17 +193,13 @@ func (h *UDPStreamHandler) forwardStreamToUDP(session *UDPProxySession) {
 		session.UDPConn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		n, err := session.UDPConn.Write(datagram.Data)
 		if err != nil {
-			h.log.Debug("发送 UDP 数据到目标失败",
-				"streamID", session.StreamID,
-				"target", session.TargetAddr,
-				"error", err)
+			h.log.Debug("发送 UDP 数据到目标失败: streamID=%d, target=%s, error=%v",
+				session.StreamID, session.TargetAddr, err)
 			return
 		}
 
-		h.log.Debug("UDP 数据已转发到目标",
-			"streamID", session.StreamID,
-			"target", session.TargetAddr,
-			"size", n)
+		h.log.Debug("UDP 数据已转发到目标: streamID=%d, target=%s, size=%d",
+			session.StreamID, session.TargetAddr, n)
 
 		if h.metrics != nil {
 			h.metrics.BytesSent(uint64(n))
@@ -240,16 +231,13 @@ func (h *UDPStreamHandler) forwardUDPToStream(session *UDPProxySession) {
 				session.mu.Lock()
 				if time.Since(session.LastActive) > h.timeout {
 					session.mu.Unlock()
-					h.log.Debug("UDP 会话超时",
-						"streamID", session.StreamID)
+					h.log.Debug("UDP 会话超时: streamID=%d", session.StreamID)
 					return
 				}
 				session.mu.Unlock()
 				continue
 			}
-			h.log.Debug("从 UDP 目标读取失败",
-				"streamID", session.StreamID,
-				"error", err)
+			h.log.Debug("从 UDP 目标读取失败: streamID=%d, error=%v", session.StreamID, err)
 			return
 		}
 
@@ -265,16 +253,12 @@ func (h *UDPStreamHandler) forwardUDPToStream(session *UDPProxySession) {
 		// 封装为 UDPDatagram 格式并发送到流（与客户端 ReadFrom 匹配）
 		datagram := &UDPDatagram{Data: buf[:n]}
 		if err := datagram.WriteTo(session.Stream); err != nil {
-			h.log.Debug("发送 UDP 响应到流失败",
-				"streamID", session.StreamID,
-				"error", err)
+			h.log.Debug("发送 UDP 响应到流失败: streamID=%d, error=%v", session.StreamID, err)
 			return
 		}
 
-		h.log.Debug("UDP 响应已转发到流",
-			"streamID", session.StreamID,
-			"target", session.TargetAddr,
-			"size", n)
+		h.log.Debug("UDP 响应已转发到流: streamID=%d, target=%s, size=%d",
+			session.StreamID, session.TargetAddr, n)
 
 		if h.metrics != nil {
 			h.metrics.BytesRecv(uint64(n))
@@ -303,9 +287,7 @@ func (h *UDPStreamHandler) closeSession(session *UDPProxySession) {
 		session.Stream.Close()
 	}
 
-	h.log.Debug("UDP 代理会话已关闭",
-		"streamID", session.StreamID,
-		"target", session.TargetAddr)
+	h.log.Debug("UDP 代理会话已关闭: streamID=%d, target=%s", session.StreamID, session.TargetAddr)
 }
 
 // cleanup 定期清理过期的 UDP 会话
@@ -324,8 +306,7 @@ func (h *UDPStreamHandler) cleanup() {
 			session.mu.Unlock()
 
 			if !closed && now.Sub(lastActive) > h.timeout {
-				h.log.Debug("清理过期 UDP 会话",
-					"streamID", session.StreamID)
+				h.log.Debug("清理过期 UDP 会话: streamID=%d", session.StreamID)
 				h.closeSession(session)
 			}
 			return true
@@ -668,16 +649,11 @@ func (h *Handler) handleStreamOpen(packet *Packet) ([]byte, error) {
 			// 根据网络类型选择不同的处理方式
 			if network == "udp" {
 				// UDP 流：使用 UDPStreamHandler 处理
-				// stream 实现了 io.ReadWriteCloser 接口
-				h.log.Debug("处理 UDP 流",
-					"streamID", stream.ID(),
-					"target", addr)
+				h.log.Debug("处理 UDP 流: streamID=%d, target=%s", stream.ID(), addr)
 
 				go func() {
 					if err := h.udpHandler.HandleUDPStream(stream, stream.ID(), addr); err != nil {
-						h.log.Error("UDP 流处理失败",
-							"streamID", stream.ID(),
-							"error", err)
+						h.log.Error("UDP 流处理失败: streamID=%d, error=%v", stream.ID(), err)
 					}
 				}()
 			} else {
@@ -701,7 +677,6 @@ func (h *Handler) handleStreamOpen(packet *Packet) ([]byte, error) {
 }
 
 // handleTCPStream 处理 TCP 流的数据转发
-// 修正：参数类型从 *MuxStream 改为 *Stream，与 mux.AcceptStream 返回类型匹配
 func (h *Handler) handleTCPStream(stream *Stream, network, addr string) {
 	defer func() {
 		stream.Close()
@@ -711,17 +686,12 @@ func (h *Handler) handleTCPStream(stream *Stream, network, addr string) {
 	// 连接到目标
 	conn, err := net.DialTimeout(network, addr, 10*time.Second)
 	if err != nil {
-		h.log.Error("连接 TCP 目标失败",
-			"streamID", stream.ID(),
-			"target", addr,
-			"error", err)
+		h.log.Error("连接 TCP 目标失败: streamID=%d, target=%s, error=%v", stream.ID(), addr, err)
 		return
 	}
 	defer conn.Close()
 
-	h.log.Debug("TCP 流已连接",
-		"streamID", stream.ID(),
-		"target", addr)
+	h.log.Debug("TCP 流已连接: streamID=%d, target=%s", stream.ID(), addr)
 
 	// 双向数据转发
 	var wg sync.WaitGroup
@@ -899,8 +869,3 @@ func (h *Handler) Close() {
 	// 关闭所有会话
 	h.sessions.CloseAll()
 }
-
-
-
-
-
