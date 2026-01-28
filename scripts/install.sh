@@ -11,7 +11,7 @@ set -e
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-VERSION="1.1"
+VERSION="1.1.1"
 GITHUB_REPO="mrcgq/p1p1"
 INSTALL_DIR="/opt/phantom"
 CONFIG_DIR="/etc/phantom"
