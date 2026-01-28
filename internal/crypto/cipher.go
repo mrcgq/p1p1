@@ -1,4 +1,3 @@
-
 package crypto
 
 import (
@@ -22,8 +21,7 @@ const (
 
 // AEAD 封装 ChaCha20-Poly1305 AEAD
 type AEAD struct {
-	aead     cipher.AEAD
-	nonceSeq uint64 // 用于顺序 nonce 生成
+	aead cipher.AEAD
 }
 
 // NewAEAD 创建新的 ChaCha20-Poly1305 AEAD 实例
@@ -31,12 +29,12 @@ func NewAEAD(key []byte) (*AEAD, error) {
 	if len(key) != KeySize {
 		return nil, fmt.Errorf("密钥长度无效: 期望 %d, 实际 %d", KeySize, len(key))
 	}
-	
+
 	aead, err := chacha20poly1305.New(key)
 	if err != nil {
 		return nil, fmt.Errorf("创建 AEAD: %w", err)
 	}
-	
+
 	return &AEAD{aead: aead}, nil
 }
 
@@ -127,4 +125,3 @@ func (a *AEAD) DecryptWithAD(packet, additionalData []byte) ([]byte, error) {
 func (a *AEAD) Overhead() int {
 	return NonceSize + TagSize
 }
-
