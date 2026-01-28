@@ -1,4 +1,3 @@
-
 package logger
 
 import (
@@ -56,7 +55,8 @@ func New(level string, filePath string) (*Logger, error) {
 		useColor: true,
 		bufPool: sync.Pool{
 			New: func() interface{} {
-				return make([]byte, 0, 256)
+				buf := make([]byte, 0, 256)
+				return &buf
 			},
 		},
 	}
@@ -103,9 +103,12 @@ func (l *Logger) log(level Level, format string, args ...interface{}) {
 	}
 
 	// 获取缓冲区
-	buf := l.bufPool.Get().([]byte)
-	buf = buf[:0]
-	defer l.bufPool.Put(buf)
+	bufPtr := l.bufPool.Get().(*[]byte)
+	buf := (*bufPtr)[:0]
+	defer func() {
+		*bufPtr = buf
+		l.bufPool.Put(bufPtr)
+	}()
 
 	// 时间戳
 	now := time.Now()
@@ -134,7 +137,7 @@ func (l *Logger) log(level Level, format string, args ...interface{}) {
 
 	// 写入
 	l.mu.Lock()
-	l.output.Write(buf)
+	_, _ = l.output.Write(buf)
 	l.mu.Unlock()
 }
 
@@ -205,4 +208,3 @@ func (l *Logger) Flush() error {
 	}
 	return nil
 }
-
