@@ -1,4 +1,3 @@
-
 package server
 
 import (
@@ -114,6 +113,13 @@ func (s *Server) Start(ctx context.Context) error {
 		s.cleanupLoop()
 	}()
 
+	// 启动流清理器（新增）
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.streamCleanupLoop()
+	}()
+
 	// 启动 UDP 服务器
 	s.udpServer = NewUDPServer(s.config, s.handler, s.fec, s.log, s.metrics)
 	s.wg.Add(1)
@@ -202,6 +208,39 @@ func (s *Server) cleanupLoop() {
 	}
 }
 
+// streamCleanupLoop 流清理循环（新增）
+func (s *Server) streamCleanupLoop() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	idleTimeout := s.config.Mux.IdleTimeout
+	if idleTimeout <= 0 {
+		idleTimeout = 5 * time.Minute
+	}
+
+	for {
+		select {
+		case <-ticker.C:
+			// 遍历所有会话，清理过期的流
+			sessionMgr := s.handler.GetSessionManager()
+			sessionMgr.ForEach(func(session *protocol.Session) bool {
+				if session.IsMux() {
+					mux := session.GetMux()
+					if mux != nil {
+						cleaned := mux.CleanExpiredStreams(idleTimeout)
+						if cleaned > 0 {
+							s.log.Debug("清理了 %d 个过期流 (会话 %d)", cleaned, session.ID)
+						}
+					}
+				}
+				return true
+			})
+		case <-s.stopCh:
+			return
+		}
+	}
+}
+
 // updateMetrics 更新 FEC 相关指标
 func (s *Server) updateMetrics() {
 	ticker := time.NewTicker(5 * time.Second)
@@ -232,5 +271,3 @@ func (s *Server) Stats() map[string]interface{} {
 
 	return stats
 }
-
-
